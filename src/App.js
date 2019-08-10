@@ -1,19 +1,18 @@
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import 'bulma/css/bulma.css';
 
-import { trainRoutes } from "./trainRoutes";
+import { nodes, edges } from "./trainRoutes";
 
 function App() {
     // State for the app
    const [ origin, setOrigin ] = useState('Edinburgh');
    const [ destination, setDestination ] = useState('London');
-   const [ currentRoute, setCurrentRoute ] = useState([]);
 
    // Creates array of jsx objects from trainRoutes to populate our select elements
     // making sure the user cannot pick same value for both origin and destination
    const generateCityList = item => {
        const oppositeValue = item === origin? destination : origin;
-       return Object.keys(trainRoutes).map( city => {
+       return nodes.map( city => {
            if(city !== oppositeValue) { return <option value={city}> {city} </option> }
        })
    };
@@ -22,32 +21,95 @@ function App() {
    const handleOrigin = e => { setOrigin(e.target.value) };
    const handleDestination = e => { setDestination(e.target.value) };
 
-   // Our main function.
-   const checkConnection = (link = origin, dest = destination, route = []) => {
-       route.push(link);
-       const links = trainRoutes[link];
-       if (links) {
-           if(links.includes(dest)) { updateRoute([...route, dest]) }
-           else {
-               links.forEach(link => {
-                   if (!route.includes(link)) {
-                       checkConnection(link, dest, route)
-                   }
-               })
-           }
-       }
-   };
 
-   // React isn't happy if the setState call is inside a loop. Dangerous!
-   const updateRoute = route => {
-       setCurrentRoute(route);
-   };
+   ////// Dijkstra's algorithm below
+    class Graph {
+        constructor() {
+            this.nodes = [];
+            this.adjacencyList = {};
+        }
+        addNode(node) {
+            this.nodes.push(node);
+            this.adjacencyList[node] = [];
+        }
+        addEdge(node1, node2, weight) {
+            this.adjacencyList[node1].push({node:node2, weight: weight});
+            this.adjacencyList[node2].push({node:node1, weight: weight});
+        }
+        findPathWithDijkstra(startNode, endNode) {
+            let times = {};
+            let backtrace = {};
+            let pq = new PriorityQueue();
+            times[startNode] = 0;
 
-   const formatRoute = () => {
-       return currentRoute.length ? currentRoute.toString().split(',').join(' -> ') :
-        'Please select a starting city and a destination'
-   };
+            this.nodes.forEach(node => {
+                if (node !== startNode) {
+                    times[node] = Infinity
+                }
+            });
+            pq.enqueue([startNode, 0]);
+            while (!pq.isEmpty()) {
+                let shortestStep = pq.dequeue();
+                let currentNode = shortestStep[0];    this.adjacencyList[currentNode].forEach(neighbor => {
+                    let time = times[currentNode] + neighbor.weight;
+                    if (time < times[neighbor.node]) {
+                        times[neighbor.node] = time;
+                        backtrace[neighbor.node] = currentNode;
+                        pq.enqueue([neighbor.node, time]);
+                    }
+                });
+            }
+            let path = [endNode];
+            let lastStep = endNode;  while(lastStep !== startNode) {
+                path.unshift(backtrace[lastStep])
+                lastStep = backtrace[lastStep]
+            }
 
+            const formatPath = path.join(' -> ');
+            return `${formatPath} -- Total time: ${times[endNode]}`;
+        }
+    }
+
+    class PriorityQueue {
+        constructor() {
+            this.collection = [];
+        }
+        enqueue(element){
+            if (this.isEmpty()){
+                this.collection.push(element);
+            } else {
+                let added = false;
+                for (let i = 1; i <= this.collection.length; i++){
+                    if (element[1] < this.collection[i-1][1]){
+                        this.collection.splice(i-1, 0, element);
+                        added = true;
+                        break;
+                    }
+                }
+                if (!added){
+                    this.collection.push(element);
+                }
+            }
+        };
+        dequeue() {
+            let value = this.collection.shift();
+            return value;
+        };  isEmpty() {
+            return (this.collection.length === 0)
+        };
+    }
+
+    const map = new Graph();
+
+    // Adding all nodes and edges from trainRoutes file
+    const initNodes = () => {
+        nodes.forEach( node => { map.addNode(node) });
+        edges.forEach(edge => {
+            map.addEdge(edge['city1'], edge['city2'], edge['weight'])
+        });
+    };
+
+    initNodes();
 
   return (
       <section className="hero is-success is-fullheight">
@@ -82,15 +144,9 @@ function App() {
                               </select>
                           </div>
                       </div>
-                      <a
-                          className="button"
-                          onClick={() => checkConnection()}
-                      >
-                          Check route
-                      </a>
                   </section>
               </div>
-              <div className="column is-two-thirds box">{ formatRoute() }</div>
+              <div className="column is-two-thirds box">{ map.findPathWithDijkstra(origin, destination) }</div>
             </div>
           </div>
         </div>
